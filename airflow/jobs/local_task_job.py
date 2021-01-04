@@ -166,14 +166,21 @@ class LocalTaskJob(BaseJob):
                 self.log.warning("Recorded pid %s does not match " "the current pid %s", ti.pid, current_pid)
                 raise AirflowException("PID of job runner does not match")
         elif self.task_runner.return_code() is None and hasattr(self.task_runner, 'process'):
-            self.log.warning(
-                "State of this instance has been externally set to %s. " "Terminating instance.", ti.state
-            )
-            if ti.state == State.FAILED and ti.task.on_failure_callback:
-                context = ti.get_template_context()
-                ti.task.on_failure_callback(context)
-            if ti.state == State.SUCCESS and ti.task.on_success_callback:
-                context = ti.get_template_context()
-                ti.task.on_success_callback(context)
-            self.task_runner.terminate()
-            self.terminating = True
+            if ti.state == State.UP_FOR_RETRY or ti.state == State.QUEUED:
+                # not illegle as up for retry, should be for reschedule or multiprocessing waiting logic
+                self.log.warning(
+                    "State of this instance may have been externally set to %s. " "Make it running and wait for some time.", ti.state
+                )
+                ti.state = State.RUNNING
+            else:
+                self.log.warning(
+                    "State of this instance has been externally set to %s. " "Terminating instance.", ti.state
+                )
+                if ti.state == State.FAILED and ti.task.on_failure_callback:
+                    context = ti.get_template_context()
+                    ti.task.on_failure_callback(context)
+                if ti.state == State.SUCCESS and ti.task.on_success_callback:
+                    context = ti.get_template_context()
+                    ti.task.on_success_callback(context)
+                self.task_runner.terminate()
+                self.terminating = True
